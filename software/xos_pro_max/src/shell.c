@@ -6,6 +6,8 @@
 #include <hdmi_terminal.h>
 #include <heap.h>
 #include <jit_demo.h>
+#include <litenes/am.h>
+#include <litenes/fce.h>
 #include <litenes/jit.h>
 #include <ps2.h>
 #include <sched.h>
@@ -205,7 +207,7 @@ static const shell_cmd_t commands[] = {
     {"countdown", "Countdown from N (e.g. countdown 10)", cmd_countdown},
     {"hdmigc", "Run HDMI buffer garbage collection", cmd_hdmi_buffer_gc},
     {"kill", "Kill task (e.g. kill 1)", cmd_kill},
-    {"mario", "Run Super Mario Bros (NES hardware)", cmd_mario},
+    {"mario", "Run Super Mario Bros (QEMU: LiteNES, FPGA: NES HW)", cmd_mario},
     {"tetris", "Play Tetris game", cmd_tetris},
     {"change", "Change framebuffer (e.g. change A/B/S)", cmd_change},
     {"hdmisrc", "Switch HDMI source (ddr/nes)", cmd_hdmi_src},
@@ -295,9 +297,17 @@ static void execute_command(void) {
             /* Countdown command runs in background */
             if (strcmp(cmd->name, "countdown") == 0 ||
                 strcmp(cmd->name, "hdmigc") == 0 ||
-                strcmp(cmd->name, "mario") == 0 ||
                 strcmp(cmd->name, "tetris") == 0) {
                 run_background = 1;
+            }
+
+            if (strcmp(cmd->name, "mario") == 0) {
+#ifdef QEMU_RUN
+                /* QEMU 下 mario 需要独占 UART 输入，前台运行 */
+                run_background = 0;
+#else
+                run_background = 1;
+#endif
             }
 
             if (run_background) {
@@ -953,9 +963,28 @@ int cmd_mario(int argc, char *argv[]) {
     (void)argv;
 
 #ifdef QEMU_RUN
-    printf("mario: NES hardware accelerator is not available in QEMU mode.\n");
-    printf("Tip: use this command on FPGA/hardware build.\n");
-    return -1;
+    extern unsigned char rom_mario_nes[];
+
+    printf("==========================================\n");
+    printf("  Super Mario Bros - LiteNES (QEMU)\n");
+    printf("==========================================\n");
+    printf("Controls:\n");
+    printf("  W/A/S/D  - Move\n");
+    printf("  J/K      - A/B\n");
+    printf("  U/I      - Select/Start\n");
+    printf("  Q or ESC - Quit emulator\n");
+    printf("==========================================\n");
+
+    ioe_init();
+    if (fce_load_rom((char *)rom_mario_nes) < 0) {
+        printf("ERROR: LiteNES ROM load failed.\n");
+        return -1;
+    }
+    fce_init();
+    fce_run();
+
+    printf("\n[LiteNES] Exit to shell.\n");
+    return 0;
 #else
     // ROM data
     extern unsigned char rom_mario_nes[];
