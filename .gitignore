@@ -1,0 +1,11 @@
+# Build artifacts
+**/build/
+**/lib/
+**/.cache/
+
+# Tooling outputs
+compile_commands.json
+trace.fst
+trace.vcd
+trace.txt
+mem_trace.txt
