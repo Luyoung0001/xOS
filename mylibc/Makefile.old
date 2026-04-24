@@ -1,0 +1,49 @@
+# Makefile for mylibc
+CROSS_COMPILE ?= loongarch32r-linux-gnusf-
+CC      := $(CROSS_COMPILE)gcc
+AR      := $(CROSS_COMPILE)ar
+
+CFLAGS = -Wall -Wextra -O2 -std=c11
+CFLAGS += -nostdlib -ffreestanding -fno-builtin
+CFLAGS += -nostdinc
+CFLAGS += -isystem $(shell $(CC) -print-file-name=include)  # GCC 内建头文件
+CFLAGS += -I./include
+
+SRCDIR = src
+BUILDDIR = build
+LIBDIR = lib
+
+# 源文件
+SRCS = $(wildcard $(SRCDIR)/*.c)
+OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(SRCS))
+
+# 目标库
+TARGET = $(LIBDIR)/libmylibc.a
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS) | $(LIBDIR)
+	$(AR) rcs $@ $^
+	@echo "Library created: $@"
+
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
+$(LIBDIR):
+	mkdir -p $(LIBDIR)
+
+clean:
+	rm -rf $(BUILDDIR) $(LIBDIR)
+
+# 显示编译信息
+info:
+	@echo "CC       = $(CC)"
+	@echo "CFLAGS   = $(CFLAGS)"
+	@echo "SRCS     = $(SRCS)"
+	@echo "OBJS     = $(OBJS)"
+	@echo "TARGET   = $(TARGET)"
