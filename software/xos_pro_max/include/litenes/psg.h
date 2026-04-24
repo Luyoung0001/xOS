@@ -16,5 +16,7 @@ byte psgio_read(word address);
 void psgio_write(word address, byte data);
 void psg_init();
 void psg_detect_key();
+bool psg_should_quit(void);
+void psg_clear_quit(void);
 
 #endif

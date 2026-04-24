@@ -8,9 +8,11 @@
 #include <ps2.h>
 #include <stdio.h>
 #include <timer.h>
+#include <uart.h>
 
 #ifdef QEMU_RUN
 #include <qemu_fb.h>
+static bool qemu_fb_ready = false;
 #endif
 
 // 初始化 IO 设备
@@ -19,8 +21,10 @@ void ioe_init(void) {
     // QEMU 模式：初始化 bochs-display
     if (qemu_fb_init() == 0) {
         qemu_fb_clear(0x00000000);  // 黑色
+        qemu_fb_ready = true;
         printf("[AM] QEMU framebuffer initialized\n");
     } else {
+        qemu_fb_ready = false;
         printf("[AM] QEMU framebuffer init failed\n");
     }
 #else
@@ -47,9 +51,14 @@ AM_TIMER_UPTIME_T am_timer_uptime(void) {
 AM_GPU_CONFIG_T am_gpu_config(void) {
     AM_GPU_CONFIG_T cfg;
 #ifdef QEMU_RUN
-    qemu_fb_info_t *info = qemu_fb_get_info();
-    cfg.width = info->width;
-    cfg.height = info->height;
+    if (!qemu_fb_ready) {
+        cfg.width = 640;
+        cfg.height = 480;
+    } else {
+        qemu_fb_info_t *info = qemu_fb_get_info();
+        cfg.width = info->width;
+        cfg.height = info->height;
+    }
 #else
     cfg.width = 256;   // NES 原始宽度
     cfg.height = 240;  // NES 原始高度
@@ -60,6 +69,15 @@ AM_GPU_CONFIG_T am_gpu_config(void) {
 // GPU 绘制函数
 void am_gpu_fbdraw(int x, int y, uint32_t *pixels, int w, int h, bool sync) {
 #ifdef QEMU_RUN
+    if (!qemu_fb_ready) {
+        (void)x;
+        (void)y;
+        (void)pixels;
+        (void)w;
+        (void)h;
+        (void)sync;
+        return;
+    }
     // QEMU 模式：直接写入 32 位 framebuffer
     qemu_fb_blit(x, y, pixels, w, h);
     (void)sync;  // QEMU 不需要同步
@@ -120,18 +138,8 @@ void am_gpu_fbdraw(int x, int y, uint32_t *pixels, int w, int h, bool sync) {
 }
 
 // 键盘输入处理
+#ifndef QEMU_RUN
 // PS2 扫描码到 AM 键码的映射
-#define AM_KEY_W 0x1D   // W
-#define AM_KEY_A 0x1C   // A
-#define AM_KEY_S 0x1B   // S
-#define AM_KEY_D 0x23   // D
-#define AM_KEY_J 0x3B   // J
-#define AM_KEY_K 0x42   // K
-#define AM_KEY_U 0x3C   // U
-#define AM_KEY_I 0x43   // I
-#define AM_KEY_ESC 0x76 // ESC
-
-static uint8_t key_states[256] = {0};
 static bool is_break_code = false;
 
 static int ps2_to_am_keycode(uint8_t scancode) {
@@ -158,12 +166,115 @@ static int ps2_to_am_keycode(uint8_t scancode) {
         return -1;
     }
 }
+#else
+static int qemu_ascii_to_am_keycode(int ch) {
+    switch (ch) {
+    case 'w':
+    case 'W':
+        return AM_KEY_W;
+    case 'a':
+    case 'A':
+        return AM_KEY_A;
+    case 's':
+    case 'S':
+        return AM_KEY_S;
+    case 'd':
+    case 'D':
+        return AM_KEY_D;
+    case 'j':
+    case 'J':
+        return AM_KEY_J;
+    case 'k':
+    case 'K':
+        return AM_KEY_K;
+    case 'u':
+    case 'U':
+        return AM_KEY_U;
+    case 'i':
+    case 'I':
+        return AM_KEY_I;
+    case 0x1b: // ESC
+    case 'q':
+    case 'Q':
+        return AM_KEY_ESC;
+    default:
+        return AM_KEY_NONE;
+    }
+}
+#endif
 
 AM_INPUT_KEYBRD_T am_input_keybrd(void) {
     AM_INPUT_KEYBRD_T ev;
     ev.keydown = false;
-    ev.keycode = 0;
+    ev.keycode = AM_KEY_NONE;
 
+#ifdef QEMU_RUN
+    static int pending_release = AM_KEY_NONE;
+    static int esc_seq_state = 0;
+
+    if (pending_release != AM_KEY_NONE) {
+        ev.keycode = pending_release;
+        ev.keydown = false;
+        pending_release = AM_KEY_NONE;
+        return ev;
+    }
+
+    int ch = bsp_uart_getc_nonblock(0);
+    if (ch < 0) {
+        return ev;
+    }
+
+    if (esc_seq_state == 1) {
+        esc_seq_state = 0;
+        if (ch == '[') {
+            esc_seq_state = 2;
+            return ev;
+        }
+        ev.keycode = AM_KEY_ESC;
+        ev.keydown = true;
+        pending_release = AM_KEY_ESC;
+        return ev;
+    }
+    if (esc_seq_state == 2) {
+        esc_seq_state = 0;
+        switch (ch) {
+        case 'A':
+            ev.keycode = AM_KEY_W;
+            break;
+        case 'B':
+            ev.keycode = AM_KEY_S;
+            break;
+        case 'C':
+            ev.keycode = AM_KEY_D;
+            break;
+        case 'D':
+            ev.keycode = AM_KEY_A;
+            break;
+        default:
+            ev.keycode = AM_KEY_NONE;
+            break;
+        }
+        if (ev.keycode != AM_KEY_NONE) {
+            ev.keydown = true;
+            pending_release = ev.keycode;
+        }
+        return ev;
+    }
+
+    if (ch == 0x1b) {
+        esc_seq_state = 1;
+        return ev;
+    }
+
+    int keycode = qemu_ascii_to_am_keycode(ch);
+    if (keycode == AM_KEY_NONE) {
+        return ev;
+    }
+    ev.keycode = keycode;
+    ev.keydown = true;
+    pending_release = keycode;
+    return ev;
+#else
     // 使用 shell 的键盘缓冲区（Mario 独占运行时可以使用）
     extern int kb_get_scancode(void);
     int scancode = kb_get_scancode();
@@ -184,11 +295,9 @@ AM_INPUT_KEYBRD_T am_input_keybrd(void) {
     if (keycode >= 0) {
         ev.keycode = keycode;
         ev.keydown = !is_break_code;
-
-        // 更新按键状态
-        key_states[keycode] = ev.keydown ? 1 : 0;
     }
 
     is_break_code = false;
     return ev;
+#endif
 }

@@ -87,6 +87,8 @@ int fce_load_rom(char *rom) {
 void fce_init() {
   cpu_init();
   ppu_init();
+  psg_init();
+  psg_clear_quit();
   ppu_set_mirroring(fce_rom_header->rom_type & 1);
   cpu_reset();
 }
@@ -111,7 +113,7 @@ void fce_run() {
   gtime = uptime_ms();
   int nr_draw = 0;
   uint32_t last = gtime;
-  while(1) {
+  while (1) {
     // Frame pacing disabled temporarily to avoid stalling if timer/uptime is not advancing in QEMU
     // wait_for_frame();
     int scanlines = 262;
@@ -119,6 +121,10 @@ void fce_run() {
     while (scanlines-- > 0) {
       ppu_cycle();
       psg_detect_key();
+      if (psg_should_quit()) {
+        psg_clear_quit();
+        return;
+      }
     }
 
     nr_draw ++;

@@ -19,6 +19,7 @@
 #define AM_KEY_K     0x42
 #define AM_KEY_U     0x3C
 #define AM_KEY_I     0x43
+#define AM_KEY_ESC   0x76
 
 // NES 手柄映射（兼容旧代码中的 AM_KEY_KEY_* 命名）
 #define AM_KEY_KEY_A      AM_KEY_J

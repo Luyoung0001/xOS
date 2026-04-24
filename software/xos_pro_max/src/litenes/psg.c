@@ -3,6 +3,7 @@
 
 static int p = 10;
 static int key_state[256];
+static bool quit_requested;
 
 #define KEYS \
   CONCAT(AM_KEY_, KEY_A), \
@@ -45,10 +46,22 @@ void psg_detect_key() {
   while (1) {
     AM_INPUT_KEYBRD_T ev = io_read(AM_INPUT_KEYBRD);
     if (ev.keycode == AM_KEY_NONE) break;
+    if (ev.keycode == AM_KEY_ESC && ev.keydown) {
+      quit_requested = true;
+    }
     key_state[ev.keycode] = ev.keydown;
   }
 }
 
 void psg_init() {
   key_state[0] = 1;
+  quit_requested = false;
+}
+
+bool psg_should_quit(void) {
+  return quit_requested;
+}
+
+void psg_clear_quit(void) {
+  quit_requested = false;
 }
