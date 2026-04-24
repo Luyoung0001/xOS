@@ -254,11 +254,6 @@ void ppu_cycle() {
 #ifdef PROFILE
   TIME_TYPE t0, t1, t2, t3, t4, t5;
 #endif
-  static int dbg_scan = 0;
-  if (dbg_scan < 3) {
-    printf("[PPUDBG] scanline=%d cpu_clock=%u\n", ppu.scanline, (unsigned)cpu_clock());
-    dbg_scan++;
-  }
 
   if (!ppu.ready && cpu_clock() > 29658)
     ppu.ready = true;

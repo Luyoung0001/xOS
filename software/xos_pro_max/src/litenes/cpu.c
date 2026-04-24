@@ -592,13 +592,6 @@ unsigned long long cpu_clock() {
 
 void cpu_run(long cycles) {
   cycles /= 3;
-  int cycles_i = (int)cycles;
-  static int jit_dbg = 0;
-  static int run_dbg = 0;
-  if (run_dbg < 3) {
-    printf("[CPURUN] enter cycles=%d PC=%04x jit=%d\n", cycles_i, cpu.PC, jit_enabled ? 1 : 0);
-    run_dbg++;
-  }
   while (cycles > 0) {
     int used = 0;
     if (jit_enabled) {
@@ -612,10 +605,6 @@ void cpu_run(long cycles) {
       }
       used = cpu_op_cycles[op_code] + op_cycles;
       op_cycles = 0;
-    }
-    if (jit_enabled && jit_dbg < 10) {
-      printf("[JITDBG-CPU] PC=%04x used=%d op=%02x cycles_rem=%d\n", cpu.PC, used, op_code, (int)cycles);
-      jit_dbg++;
     }
     cycles    -= used;
     cpu_cycles -= used;
